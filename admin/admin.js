@@ -2,6 +2,7 @@
   const storageKey = "pauloRebeloContent";
   let content = clone(window.PAULO_DEFAULT_CONTENT);
   let requests = [];
+  let requestsError = "";
   let activeTab = "summary";
   let role = "";
 
@@ -81,8 +82,10 @@
       const response = await fetch("/api/requests", { cache: "no-store" });
       if (!response.ok) throw new Error("Requests unavailable");
       requests = await response.json();
+      requestsError = "";
     } catch (error) {
       requests = [];
+      requestsError = "Não foi possível carregar os pedidos. Termine sessão, volte a entrar e confirme que está a usar o domínio correto.";
     }
   }
 
@@ -104,15 +107,15 @@
     setTimeout(() => target.hidden = true, 3200);
   }
 
-  function renderShell() {
+  async function renderShell() {
     login.hidden = Boolean(role);
     app.hidden = !role;
     if (!role) return;
     roleLabel.textContent = role === "super" ? "Super Admin" : "Paulo / Content Admin";
-    renderTab(activeTab);
+    await renderTab(activeTab);
   }
 
-  function renderTab(tab) {
+  async function renderTab(tab) {
     activeTab = tab;
     document.querySelectorAll("[data-tabs] button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
     document.querySelectorAll("[data-panel]").forEach((panel) => panel.hidden = panel.dataset.panel !== tab);
@@ -123,7 +126,11 @@
     if (tab === "services") renderCollection("services");
     if (tab === "posts") renderCollection("posts");
     if (tab === "testimonials") renderCollection("testimonials");
-    if (tab === "requests") renderRequests();
+    if (tab === "requests") {
+      panel("requests").innerHTML = `<article class="editor-card"><h3>A carregar pedidos...</h3></article>`;
+      await loadRequests();
+      renderRequests();
+    }
     if (tab === "galleryFolders") renderCollection("galleryFolders");
     if (tab === "highlight") renderObject("highlight", content.highlight);
     if (tab === "settings") renderObject("settings", content.settings);
@@ -178,11 +185,17 @@
 
   function renderRequests() {
     const node = panel("requests");
-    if (!requests.length) {
-      node.innerHTML = `<article class="editor-card"><h3>Sem pedidos recebidos</h3><p>Quando alguém enviar o formulário de contacto, o pedido aparece aqui.</p></article>`;
+    if (requestsError) {
+      node.innerHTML = `<article class="editor-card"><h3>Erro ao carregar pedidos</h3><p>${requestsError}</p><button class="ghost-button" data-refresh-requests>Atualizar pedidos</button></article>`;
+      node.querySelector("[data-refresh-requests]").addEventListener("click", () => renderTab("requests"));
       return;
     }
-    node.innerHTML = `<div class="editor-list">${requests.map((entry) => `
+    if (!requests.length) {
+      node.innerHTML = `<article class="editor-card"><h3>Sem pedidos recebidos</h3><p>Quando alguém enviar o formulário de contacto, o pedido aparece aqui.</p><button class="ghost-button" data-refresh-requests>Atualizar pedidos</button></article>`;
+      node.querySelector("[data-refresh-requests]").addEventListener("click", () => renderTab("requests"));
+      return;
+    }
+    node.innerHTML = `<div class="admin-actions"><button class="ghost-button" data-refresh-requests>Atualizar pedidos</button></div><div class="editor-list">${requests.map((entry) => `
       <article class="editor-card request-card">
         <header>
           <div><p class="eyebrow">${formatRequestDate(entry.createdAt)}</p><h3>${escapeText(entry.name || "Pedido sem nome")}</h3></div>
@@ -197,6 +210,7 @@
           <p class="wide"><strong>Mensagem</strong><br>${escapeText(entry.message || "-")}</p>
         </div>
       </article>`).join("")}</div>`;
+    node.querySelector("[data-refresh-requests]").addEventListener("click", () => renderTab("requests"));
     node.querySelectorAll("[data-delete-request]").forEach((button) => {
       button.addEventListener("click", () => deleteRequest(button.dataset.deleteRequest));
     });
