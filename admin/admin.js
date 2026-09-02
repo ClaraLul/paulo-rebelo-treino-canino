@@ -1,14 +1,8 @@
 (function () {
   const storageKey = "pauloRebeloContent";
-  const sessionKey = "pauloAdminSession";
-  const passwords = {
-    // Demo SHA-256 hashes for "paulo2026" and "super2026".
-    paulo: "822bfda4f01fd54b614905a0d875e80ae0210477a4971c3b22e97d1dd6c3372c",
-    super: "9a0ee89e00a006877eca0c28eebeb38aa301469b9cce8012b6ee04b13079a7e8"
-  };
-  let content = loadContent();
+  let content = clone(window.PAULO_DEFAULT_CONTENT);
   let activeTab = "summary";
-  let role = sessionStorage.getItem(sessionKey);
+  let role = "";
 
   const login = document.querySelector("[data-login]");
   const app = document.querySelector("[data-admin]");
@@ -21,7 +15,13 @@
     return JSON.parse(JSON.stringify(value));
   }
 
-  function loadContent() {
+  async function loadContent() {
+    try {
+      const response = await fetch("/api/content", { cache: "no-store" });
+      if (response.ok) return normalizeContent(await response.json());
+    } catch (error) {
+      // Local file preview fallback.
+    }
     try {
       return normalizeContent(JSON.parse(localStorage.getItem(storageKey)) || clone(window.PAULO_DEFAULT_CONTENT));
     } catch (error) {
@@ -52,7 +52,7 @@
     }
     ["services", "posts", "events"].forEach((key) => {
       data[key] = data[key] || [];
-      const existing = new Set((data[key] || []).map((item) => item.slug));
+      const existing = new Set(data[key].map((item) => item.slug));
       window.PAULO_DEFAULT_CONTENT[key].forEach((item) => {
         if (!existing.has(item.slug)) data[key].push(clone(item));
       });
@@ -60,21 +60,26 @@
     return data;
   }
 
-  function saveContent() {
-    localStorage.setItem(storageKey, JSON.stringify(content));
-    showNotice("Alterações guardadas neste navegador.");
-  }
-
-  async function hash(value) {
-    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-    return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  async function saveContent() {
+    try {
+      const response = await fetch("/api/content", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(content)
+      });
+      if (!response.ok) throw new Error("Save failed");
+      localStorage.setItem(storageKey, JSON.stringify(content));
+      showNotice("Alterações guardadas no servidor.");
+    } catch (error) {
+      showNotice("Erro ao guardar. Faça login novamente se a sessão expirou.");
+    }
   }
 
   function showNotice(message) {
     const target = app.hidden ? loginNotice : notice;
     target.textContent = message;
     target.hidden = false;
-    setTimeout(() => target.hidden = true, 2800);
+    setTimeout(() => target.hidden = true, 3200);
   }
 
   function renderShell() {
@@ -102,7 +107,8 @@
   }
 
   function renderSummary() {
-    const upcoming = content.events.filter((event) => event.published && new Date(event.date + "T23:59:59") >= new Date()).length;
+    const today = new Date().toISOString().slice(0, 10);
+    const upcoming = content.events.filter((event) => event.published && event.date >= today).length;
     const activeServices = content.services.filter((service) => service.active).length;
     const posts = content.posts.filter((post) => post.published).length;
     const featured = content.highlight.active ? content.highlight.title : "Sem destaque ativo";
@@ -138,12 +144,12 @@
       });
       list.appendChild(card);
     });
-    bindInputs(node, type);
+    bindInputs(node);
   }
 
   function renderObject(type, object) {
     panel(type).innerHTML = `<article class="editor-card">${fieldsFor(type, object)}</article>`;
-    bindInputs(panel(type), type);
+    bindInputs(panel(type));
   }
 
   function textField(label, path, value, wide = false, type = "text") {
@@ -170,11 +176,10 @@
     if (type === "events") return `<div class="admin-form-grid">
       ${textField("Título", `${prefix}.title`, item.title)}${textField("Slug", `${prefix}.slug`, item.slug)}
       ${textField("Imagem", `${prefix}.image`, item.image, true)}${textField("Data", `${prefix}.date`, item.date, false, "date")}
-      ${textField("Data visível", `${prefix}.dateLabel`, item.dateLabel || "")}
-      ${textField("Hora", `${prefix}.time`, item.time, false, "time")}${textField("Local", `${prefix}.location`, item.location)}
-      ${textField("Preço", `${prefix}.price`, item.price)}${textField("Link de inscrição", `${prefix}.registrationLink`, item.registrationLink)}
-      ${areaField("Descrição curta", `${prefix}.short`, item.short)}${areaField("Descrição completa", `${prefix}.full`, item.full)}
-      ${checkField("Publicado", `${prefix}.published`, item.published)}${checkField("Destaque", `${prefix}.featured`, item.featured)}
+      ${textField("Data visível", `${prefix}.dateLabel`, item.dateLabel || "")}${textField("Hora", `${prefix}.time`, item.time, false, "time")}
+      ${textField("Local", `${prefix}.location`, item.location)}${textField("Preço", `${prefix}.price`, item.price)}
+      ${textField("Link de inscrição", `${prefix}.registrationLink`, item.registrationLink)}${areaField("Descrição curta", `${prefix}.short`, item.short)}
+      ${areaField("Descrição completa", `${prefix}.full`, item.full)}${checkField("Publicado", `${prefix}.published`, item.published)}${checkField("Destaque", `${prefix}.featured`, item.featured)}
     </div>`;
     if (type === "posts") return `<div class="admin-form-grid">
       ${textField("Título", `${prefix}.title`, item.title)}${textField("Slug", `${prefix}.slug`, item.slug)}
@@ -205,8 +210,7 @@
       ${textField("Marca", "settings.brand", item.brand)}${textField("Telefone", "settings.phone", item.phone)}
       ${textField("Email", "settings.email", item.email)}${textField("Localização", "settings.location", item.location)}
       ${textField("Área de serviço", "settings.serviceArea", item.serviceArea, true)}${textField("Facebook URL", "settings.facebook", item.facebook)}
-      ${textField("Instagram URL", "settings.instagram", item.instagram)}${textField("Messenger URL", "settings.messenger", item.messenger)}
-      ${textField("WhatsApp URL", "settings.whatsapp", item.whatsapp)}
+      ${textField("Instagram URL", "settings.instagram", item.instagram)}${textField("WhatsApp URL", "settings.whatsapp", item.whatsapp)}
     </div>`;
     return "";
   }
@@ -228,8 +232,8 @@
     });
   }
 
-  function setValue(path, value) {
-    const parts = path.split(".");
+  function setValue(keyPath, value) {
+    const parts = keyPath.split(".");
     let target = content;
     while (parts.length > 1) target = target[parts.shift()];
     if (parts[0] === "mediaText") {
@@ -262,28 +266,40 @@
   document.querySelector("[data-login-form]").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const selectedRole = form.get("role");
-    if (await hash(form.get("password")) === passwords[selectedRole]) {
-      role = selectedRole;
-      sessionStorage.setItem(sessionKey, role);
-      renderShell();
-    } else {
+    const response = await fetch("/api/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: form.get("role"), password: form.get("password") })
+    });
+    if (!response.ok) {
       showNotice("Password incorreta.");
+      return;
     }
+    role = (await response.json()).role;
+    content = await loadContent();
+    renderShell();
   });
+
   document.querySelector("[data-tabs]").addEventListener("click", (event) => {
     if (event.target.matches("[data-tab]")) renderTab(event.target.dataset.tab);
   });
   document.querySelector("[data-save]").addEventListener("click", saveContent);
-  document.querySelector("[data-logout]").addEventListener("click", () => {
-    sessionStorage.removeItem(sessionKey);
+  document.querySelector("[data-logout]").addEventListener("click", async () => {
+    await fetch("/api/logout", { method: "POST" });
     role = "";
     renderShell();
   });
   document.querySelector("[data-reset]").addEventListener("click", () => {
-    content = clone(window.PAULO_DEFAULT_CONTENT);
-    saveContent();
+    content = normalizeContent(clone(window.PAULO_DEFAULT_CONTENT));
     renderTab(activeTab);
   });
-  renderShell();
+
+  async function boot() {
+    const session = await fetch("/api/session", { cache: "no-store" }).then((response) => response.json()).catch(() => ({ authenticated: false }));
+    role = session.authenticated ? session.role : "";
+    content = await loadContent();
+    renderShell();
+  }
+
+  boot();
 })();

@@ -8,8 +8,14 @@
     return JSON.parse(JSON.stringify(value));
   }
 
-  function getContent() {
+  async function getContent() {
     const fallback = clone(window.PAULO_DEFAULT_CONTENT);
+    try {
+      const response = await fetch("/api/content", { cache: "no-store" });
+      if (response.ok) return normalizeContent(await response.json());
+    } catch (error) {
+      // Static fallback for local file previews.
+    }
     try {
       const saved = localStorage.getItem(storageKey);
       return normalizeContent(saved ? JSON.parse(saved) : fallback);
@@ -588,19 +594,23 @@
     });
   }
 
-  const data = getContent();
-  window.PauloSite = { getContent, saveContent, path, img, formatDate, storageKey };
-  renderHeader(data);
-  renderFooter(data);
-  renderHome(data);
-  renderServices(data);
-  renderServiceDetail(data);
-  renderAbout(data);
-  renderTestimonials(data);
-  renderNews(data);
-  renderGallery(data);
-  renderContentDetail(data);
-  renderContact(data);
-  translatePage();
-  revealOnScroll();
+  async function init() {
+    const data = await getContent();
+    window.PauloSite = { getContent, saveContent, path, img, formatDate, storageKey };
+    renderHeader(data);
+    renderFooter(data);
+    renderHome(data);
+    renderServices(data);
+    renderServiceDetail(data);
+    renderAbout(data);
+    renderTestimonials(data);
+    renderNews(data);
+    renderGallery(data);
+    renderContentDetail(data);
+    renderContact(data);
+    translatePage();
+    revealOnScroll();
+  }
+
+  init();
 })();
