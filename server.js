@@ -8,6 +8,7 @@ const root = __dirname;
 const port = Number(process.env.PORT || 8080);
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
 const contentFile = path.join(dataDir, "content.json");
+const requestsFile = path.join(dataDir, "requests.json");
 const sessions = new Map();
 const maxBodySize = 2 * 1024 * 1024;
 
@@ -61,6 +62,23 @@ function readContent() {
 function writeContent(content) {
   ensureContentFile();
   fs.writeFileSync(contentFile, JSON.stringify(content, null, 2));
+}
+
+function ensureRequestsFile() {
+  fs.mkdirSync(dataDir, { recursive: true });
+  if (!fs.existsSync(requestsFile)) {
+    fs.writeFileSync(requestsFile, "[]");
+  }
+}
+
+function readRequests() {
+  ensureRequestsFile();
+  return JSON.parse(fs.readFileSync(requestsFile, "utf8"));
+}
+
+function writeRequests(requests) {
+  ensureRequestsFile();
+  fs.writeFileSync(requestsFile, JSON.stringify(requests, null, 2));
 }
 
 function sendJson(response, status, payload, headers = {}) {
@@ -146,6 +164,55 @@ async function handleApi(request, response, pathname) {
       sendJson(response, 200, { role }, {
         "set-cookie": `paulo_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=43200${process.env.NODE_ENV === "production" ? "; Secure" : ""}`
       });
+      return true;
+    }
+
+    if (request.method === "POST" && pathname === "/api/requests") {
+      const body = await readBody(request);
+      const entry = {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        name: String(body.name || "").trim(),
+        email: String(body.email || "").trim(),
+        phone: String(body.phone || "").trim(),
+        dogName: String(body.dogName || "").trim(),
+        dogAge: String(body.dogAge || "").trim(),
+        contactPreference: String(body.contactPreference || "").trim(),
+        reason: String(body.reason || "").trim(),
+        message: String(body.message || "").trim(),
+        status: "new"
+      };
+      if (!entry.name || !entry.email || !entry.message) {
+        sendJson(response, 400, { error: "Missing required fields" });
+        return true;
+      }
+      const requests = readRequests();
+      requests.unshift(entry);
+      writeRequests(requests);
+      sendJson(response, 201, { ok: true });
+      return true;
+    }
+
+    if (request.method === "GET" && pathname === "/api/requests") {
+      const session = currentSession(request);
+      if (!session) {
+        sendJson(response, 401, { error: "Not authenticated" });
+        return true;
+      }
+      sendJson(response, 200, readRequests());
+      return true;
+    }
+
+    if (request.method === "DELETE" && pathname.startsWith("/api/requests/")) {
+      const session = currentSession(request);
+      if (!session) {
+        sendJson(response, 401, { error: "Not authenticated" });
+        return true;
+      }
+      const id = decodeURIComponent(pathname.replace("/api/requests/", ""));
+      const requests = readRequests();
+      writeRequests(requests.filter((entry) => entry.id !== id));
+      sendJson(response, 200, { ok: true });
       return true;
     }
 

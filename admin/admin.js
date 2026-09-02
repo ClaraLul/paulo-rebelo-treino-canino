@@ -1,6 +1,7 @@
 (function () {
   const storageKey = "pauloRebeloContent";
   let content = clone(window.PAULO_DEFAULT_CONTENT);
+  let requests = [];
   let activeTab = "summary";
   let role = "";
 
@@ -75,6 +76,27 @@
     }
   }
 
+  async function loadRequests() {
+    try {
+      const response = await fetch("/api/requests", { cache: "no-store" });
+      if (!response.ok) throw new Error("Requests unavailable");
+      requests = await response.json();
+    } catch (error) {
+      requests = [];
+    }
+  }
+
+  async function deleteRequest(id) {
+    const response = await fetch(`/api/requests/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!response.ok) {
+      showNotice("Erro ao eliminar pedido.");
+      return;
+    }
+    requests = requests.filter((entry) => entry.id !== id);
+    renderRequests();
+    showNotice("Pedido eliminado.");
+  }
+
   function showNotice(message) {
     const target = app.hidden ? loginNotice : notice;
     target.textContent = message;
@@ -94,13 +116,14 @@
     activeTab = tab;
     document.querySelectorAll("[data-tabs] button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
     document.querySelectorAll("[data-panel]").forEach((panel) => panel.hidden = panel.dataset.panel !== tab);
-    const labels = { summary: "Resumo", events: "Eventos", services: "Serviços & Preços", posts: "Publicações", testimonials: "Testemunhos", galleryFolders: "Galeria", highlight: "Destaque do Site", settings: "Definições" };
+    const labels = { summary: "Resumo", events: "Eventos", services: "Serviços & Preços", posts: "Publicações", testimonials: "Testemunhos", requests: "Pedidos", galleryFolders: "Galeria", highlight: "Destaque do Site", settings: "Definições" };
     title.textContent = labels[tab];
     if (tab === "summary") renderSummary();
     if (tab === "events") renderCollection("events");
     if (tab === "services") renderCollection("services");
     if (tab === "posts") renderCollection("posts");
     if (tab === "testimonials") renderCollection("testimonials");
+    if (tab === "requests") renderRequests();
     if (tab === "galleryFolders") renderCollection("galleryFolders");
     if (tab === "highlight") renderObject("highlight", content.highlight);
     if (tab === "settings") renderObject("settings", content.settings);
@@ -115,6 +138,7 @@
     panel("summary").innerHTML = `<div class="admin-grid">
       <article class="admin-card"><p class="eyebrow">Próximos Eventos</p><strong>${upcoming}</strong><button class="ghost-button" data-goto="events">+ Adicionar Evento</button></article>
       <article class="admin-card"><p class="eyebrow">Serviços</p><strong>${activeServices}</strong><button class="ghost-button" data-goto="services">Gerir Serviços</button></article>
+      <article class="admin-card"><p class="eyebrow">Pedidos</p><strong>${requests.length}</strong><button class="ghost-button" data-goto="requests">Ver pedidos</button></article>
       <article class="admin-card"><p class="eyebrow">Novidades</p><strong>${posts}</strong><button class="ghost-button" data-goto="posts">+ Nova Publicação</button></article>
       <article class="admin-card"><p class="eyebrow">Destaque do Site</p><h3>${featured}</h3><button class="ghost-button" data-goto="highlight">Editar Destaque</button></article>
     </div>`;
@@ -150,6 +174,37 @@
   function renderObject(type, object) {
     panel(type).innerHTML = `<article class="editor-card">${fieldsFor(type, object)}</article>`;
     bindInputs(panel(type));
+  }
+
+  function renderRequests() {
+    const node = panel("requests");
+    if (!requests.length) {
+      node.innerHTML = `<article class="editor-card"><h3>Sem pedidos recebidos</h3><p>Quando alguém enviar o formulário de contacto, o pedido aparece aqui.</p></article>`;
+      return;
+    }
+    node.innerHTML = `<div class="editor-list">${requests.map((entry) => `
+      <article class="editor-card request-card">
+        <header>
+          <div><p class="eyebrow">${formatRequestDate(entry.createdAt)}</p><h3>${escapeText(entry.name || "Pedido sem nome")}</h3></div>
+          <button class="ghost-button danger" data-delete-request="${escapeValue(entry.id)}">Eliminar</button>
+        </header>
+        <div class="request-grid">
+          <p><strong>Email</strong><br><a href="mailto:${escapeValue(entry.email)}">${escapeText(entry.email)}</a></p>
+          <p><strong>Telefone</strong><br>${entry.phone ? `<a href="tel:${escapeValue(entry.phone)}">${escapeText(entry.phone)}</a>` : "-"}</p>
+          <p><strong>Cão</strong><br>${escapeText([entry.dogName, entry.dogAge].filter(Boolean).join(" · ") || "-")}</p>
+          <p><strong>Preferência</strong><br>${escapeText(entry.contactPreference || "-")}</p>
+          <p class="wide"><strong>Motivo</strong><br>${escapeText(entry.reason || "-")}</p>
+          <p class="wide"><strong>Mensagem</strong><br>${escapeText(entry.message || "-")}</p>
+        </div>
+      </article>`).join("")}</div>`;
+    node.querySelectorAll("[data-delete-request]").forEach((button) => {
+      button.addEventListener("click", () => deleteRequest(button.dataset.deleteRequest));
+    });
+  }
+
+  function formatRequestDate(value) {
+    if (!value) return "";
+    return new Intl.DateTimeFormat("pt-PT", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
   }
 
   function textField(label, path, value, wide = false, type = "text") {
@@ -277,6 +332,7 @@
     }
     role = (await response.json()).role;
     content = await loadContent();
+    await loadRequests();
     renderShell();
   });
 
@@ -298,6 +354,7 @@
     const session = await fetch("/api/session", { cache: "no-store" }).then((response) => response.json()).catch(() => ({ authenticated: false }));
     role = session.authenticated ? session.role : "";
     content = await loadContent();
+    if (role) await loadRequests();
     renderShell();
   }
 

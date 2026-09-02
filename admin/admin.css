@@ -139,6 +139,19 @@
 .admin-form-grid .wide {
   grid-column: 1 / -1;
 }
+.request-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem 1rem;
+}
+.request-grid p {
+  margin: 0;
+  padding: .85rem;
+  background: rgba(20, 21, 17, .04);
+}
+.request-grid .wide {
+  grid-column: 1 / -1;
+}
 .check-row {
   display: flex;
   align-items: center;
@@ -161,6 +174,12 @@
     grid-template-columns: 1fr;
   }
   .admin-form-grid .wide {
+    grid-column: auto;
+  }
+  .request-grid {
+    grid-template-columns: 1fr;
+  }
+  .request-grid .wide {
     grid-column: auto;
   }
 }

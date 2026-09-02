@@ -332,6 +332,38 @@
       <optgroup label="Inscrição em evento">
         ${eventOptions.length ? eventOptions.map((option) => `<option value="${option.value}" ${option.value === selected ? "selected" : ""}>${option.label}</option>`).join("") : `<option value="sem-eventos" disabled>Sem eventos futuros disponíveis</option>`}
       </optgroup>`;
+    const form = el("[data-contact-form]");
+    const status = el("[data-contact-status]");
+    if (!form || !status) return;
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const selectedReason = reason.selectedOptions[0]?.textContent || "";
+      status.hidden = true;
+      try {
+        const response = await fetch("/api/requests", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: formData.get("Nome"),
+            email: formData.get("Email"),
+            phone: formData.get("Telefone"),
+            dogName: formData.get("Nome do cão"),
+            dogAge: formData.get("Idade do cão"),
+            contactPreference: formData.get("Preferência de contacto"),
+            reason: selectedReason,
+            message: formData.get("Mensagem")
+          })
+        });
+        if (!response.ok) throw new Error("Request failed");
+        form.reset();
+        status.textContent = "Pedido enviado. Paulo recebeu a informação na área de administração.";
+        status.hidden = false;
+      } catch (error) {
+        status.textContent = "Não foi possível enviar o pedido. Tente novamente ou contacte por telefone/WhatsApp.";
+        status.hidden = false;
+      }
+    });
   }
 
   function revealOnScroll() {
