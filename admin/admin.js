@@ -1,0 +1,289 @@
+(function () {
+  const storageKey = "pauloRebeloContent";
+  const sessionKey = "pauloAdminSession";
+  const passwords = {
+    // Demo SHA-256 hashes for "paulo2026" and "super2026".
+    paulo: "822bfda4f01fd54b614905a0d875e80ae0210477a4971c3b22e97d1dd6c3372c",
+    super: "9a0ee89e00a006877eca0c28eebeb38aa301469b9cce8012b6ee04b13079a7e8"
+  };
+  let content = loadContent();
+  let activeTab = "summary";
+  let role = sessionStorage.getItem(sessionKey);
+
+  const login = document.querySelector("[data-login]");
+  const app = document.querySelector("[data-admin]");
+  const title = document.querySelector("[data-title]");
+  const roleLabel = document.querySelector("[data-role]");
+  const notice = document.querySelector("[data-notice]");
+  const loginNotice = document.querySelector("[data-login-notice]");
+
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function loadContent() {
+    try {
+      return normalizeContent(JSON.parse(localStorage.getItem(storageKey)) || clone(window.PAULO_DEFAULT_CONTENT));
+    } catch (error) {
+      return normalizeContent(clone(window.PAULO_DEFAULT_CONTENT));
+    }
+  }
+
+  function normalizeContent(data) {
+    data.settings.instagram = data.settings.instagram || "https://www.instagram.com/treinocaninoaz/";
+    if (!data.settings.facebook || data.settings.facebook === "https://www.facebook.com/") {
+      data.settings.facebook = "https://www.facebook.com/CaninoTreino/";
+    }
+    if (data.settings.youtube === "https://www.youtube.com/") data.settings.youtube = "";
+    const defaultGalleryFolders = window.PAULO_DEFAULT_CONTENT.galleryFoldersV2 || window.PAULO_DEFAULT_CONTENT.galleryFolders;
+    if (data.galleryVersion !== 3) {
+      data.galleryFolders = clone(defaultGalleryFolders);
+      data.galleryVersion = 3;
+    }
+    if (data.contentVersion !== 2) {
+      ["services", "posts", "events", "testimonials"].forEach((key) => {
+        const defaults = window.PAULO_DEFAULT_CONTENT[key] || [];
+        (data[key] || []).forEach((item) => {
+          const fresh = defaults.find((entry) => entry.slug && entry.slug === item.slug);
+          if (fresh && fresh.image) item.image = fresh.image;
+        });
+      });
+      data.contentVersion = 2;
+    }
+    ["services", "posts", "events"].forEach((key) => {
+      data[key] = data[key] || [];
+      const existing = new Set((data[key] || []).map((item) => item.slug));
+      window.PAULO_DEFAULT_CONTENT[key].forEach((item) => {
+        if (!existing.has(item.slug)) data[key].push(clone(item));
+      });
+    });
+    return data;
+  }
+
+  function saveContent() {
+    localStorage.setItem(storageKey, JSON.stringify(content));
+    showNotice("Alterações guardadas neste navegador.");
+  }
+
+  async function hash(value) {
+    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+    return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  function showNotice(message) {
+    const target = app.hidden ? loginNotice : notice;
+    target.textContent = message;
+    target.hidden = false;
+    setTimeout(() => target.hidden = true, 2800);
+  }
+
+  function renderShell() {
+    login.hidden = Boolean(role);
+    app.hidden = !role;
+    if (!role) return;
+    roleLabel.textContent = role === "super" ? "Super Admin" : "Paulo / Content Admin";
+    renderTab(activeTab);
+  }
+
+  function renderTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll("[data-tabs] button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+    document.querySelectorAll("[data-panel]").forEach((panel) => panel.hidden = panel.dataset.panel !== tab);
+    const labels = { summary: "Resumo", events: "Eventos", services: "Serviços & Preços", posts: "Publicações", testimonials: "Testemunhos", galleryFolders: "Galeria", highlight: "Destaque do Site", settings: "Definições" };
+    title.textContent = labels[tab];
+    if (tab === "summary") renderSummary();
+    if (tab === "events") renderCollection("events");
+    if (tab === "services") renderCollection("services");
+    if (tab === "posts") renderCollection("posts");
+    if (tab === "testimonials") renderCollection("testimonials");
+    if (tab === "galleryFolders") renderCollection("galleryFolders");
+    if (tab === "highlight") renderObject("highlight", content.highlight);
+    if (tab === "settings") renderObject("settings", content.settings);
+  }
+
+  function renderSummary() {
+    const upcoming = content.events.filter((event) => event.published && new Date(event.date + "T23:59:59") >= new Date()).length;
+    const activeServices = content.services.filter((service) => service.active).length;
+    const posts = content.posts.filter((post) => post.published).length;
+    const featured = content.highlight.active ? content.highlight.title : "Sem destaque ativo";
+    panel("summary").innerHTML = `<div class="admin-grid">
+      <article class="admin-card"><p class="eyebrow">Próximos Eventos</p><strong>${upcoming}</strong><button class="ghost-button" data-goto="events">+ Adicionar Evento</button></article>
+      <article class="admin-card"><p class="eyebrow">Serviços</p><strong>${activeServices}</strong><button class="ghost-button" data-goto="services">Gerir Serviços</button></article>
+      <article class="admin-card"><p class="eyebrow">Novidades</p><strong>${posts}</strong><button class="ghost-button" data-goto="posts">+ Nova Publicação</button></article>
+      <article class="admin-card"><p class="eyebrow">Destaque do Site</p><h3>${featured}</h3><button class="ghost-button" data-goto="highlight">Editar Destaque</button></article>
+    </div>`;
+    panel("summary").querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => renderTab(button.dataset.goto)));
+  }
+
+  function panel(name) {
+    return document.querySelector(`[data-panel="${name}"]`);
+  }
+
+  function renderCollection(type) {
+    const node = panel(type);
+    const addLabel = { events: "+ Adicionar Evento", services: "+ Adicionar Serviço", posts: "+ Nova Publicação", testimonials: "+ Adicionar Testemunho", galleryFolders: "+ Adicionar Pasta" }[type];
+    node.innerHTML = `<div class="admin-actions"><button class="ghost-button" data-add>${addLabel}</button></div><div class="editor-list"></div>`;
+    node.querySelector("[data-add]").addEventListener("click", () => {
+      content[type].push(blank(type));
+      renderCollection(type);
+    });
+    const list = node.querySelector(".editor-list");
+    content[type].forEach((item, index) => {
+      const card = document.createElement("article");
+      card.className = "editor-card";
+      card.innerHTML = `<header><h3>${item.title || item.client || "Novo item"}</h3><button class="ghost-button danger" data-delete>Eliminar</button></header>${fieldsFor(type, item, index)}`;
+      card.querySelector("[data-delete]").addEventListener("click", () => {
+        content[type].splice(index, 1);
+        renderCollection(type);
+      });
+      list.appendChild(card);
+    });
+    bindInputs(node, type);
+  }
+
+  function renderObject(type, object) {
+    panel(type).innerHTML = `<article class="editor-card">${fieldsFor(type, object)}</article>`;
+    bindInputs(panel(type), type);
+  }
+
+  function textField(label, path, value, wide = false, type = "text") {
+    return `<label class="${wide ? "wide" : ""}">${label}<input type="${type}" value="${escapeValue(value)}" data-path="${path}"></label>`;
+  }
+
+  function areaField(label, path, value) {
+    return `<label class="wide">${label}<textarea data-path="${path}">${escapeText(value)}</textarea></label>`;
+  }
+
+  function checkField(label, path, value) {
+    return `<label class="check-row"><input type="checkbox" ${value ? "checked" : ""} data-path="${path}">${label}</label>`;
+  }
+
+  function fieldsFor(type, item, index) {
+    const prefix = typeof index === "number" ? `${type}.${index}` : type;
+    if (type === "services") return `<div class="admin-form-grid">
+      ${textField("Título", `${prefix}.title`, item.title)}${textField("Slug", `${prefix}.slug`, item.slug)}
+      ${textField("Imagem", `${prefix}.image`, item.image, true)}${areaField("Descrição curta", `${prefix}.short`, item.short)}
+      ${areaField("Descrição completa", `${prefix}.long`, item.long)}${textField("Preço prefixo", `${prefix}.pricePrefix`, item.pricePrefix)}
+      ${textField("Preço", `${prefix}.price`, item.price)}${textField("Duração", `${prefix}.duration`, item.duration)}
+      ${textField("Ordem", `${prefix}.order`, item.order, false, "number")}${checkField("Ativo", `${prefix}.active`, item.active)}
+    </div>`;
+    if (type === "events") return `<div class="admin-form-grid">
+      ${textField("Título", `${prefix}.title`, item.title)}${textField("Slug", `${prefix}.slug`, item.slug)}
+      ${textField("Imagem", `${prefix}.image`, item.image, true)}${textField("Data", `${prefix}.date`, item.date, false, "date")}
+      ${textField("Data visível", `${prefix}.dateLabel`, item.dateLabel || "")}
+      ${textField("Hora", `${prefix}.time`, item.time, false, "time")}${textField("Local", `${prefix}.location`, item.location)}
+      ${textField("Preço", `${prefix}.price`, item.price)}${textField("Link de inscrição", `${prefix}.registrationLink`, item.registrationLink)}
+      ${areaField("Descrição curta", `${prefix}.short`, item.short)}${areaField("Descrição completa", `${prefix}.full`, item.full)}
+      ${checkField("Publicado", `${prefix}.published`, item.published)}${checkField("Destaque", `${prefix}.featured`, item.featured)}
+    </div>`;
+    if (type === "posts") return `<div class="admin-form-grid">
+      ${textField("Título", `${prefix}.title`, item.title)}${textField("Slug", `${prefix}.slug`, item.slug)}
+      ${textField("Categoria", `${prefix}.category`, item.category)}${textField("Data", `${prefix}.date`, item.date, false, "date")}
+      ${textField("Imagem", `${prefix}.image`, item.image, true)}${areaField("Descrição curta", `${prefix}.short`, item.short)}
+      ${areaField("Conteúdo", `${prefix}.full`, item.full)}${textField("Preço opcional", `${prefix}.price`, item.price)}
+      ${textField("Link externo", `${prefix}.externalLink`, item.externalLink)}${checkField("Publicado", `${prefix}.published`, item.published)}
+    </div>`;
+    if (type === "testimonials") return `<div class="admin-form-grid">
+      ${textField("Cliente", `${prefix}.client`, item.client)}${textField("Nome do cão", `${prefix}.dog`, item.dog)}
+      ${textField("Rating", `${prefix}.rating`, item.rating, false, "number")}${textField("Fonte", `${prefix}.source`, item.source)}
+      ${textField("Imagem", `${prefix}.image`, item.image, true)}${areaField("Testemunho", `${prefix}.text`, item.text)}
+      ${checkField("Publicado", `${prefix}.published`, item.published)}${checkField("Destaque", `${prefix}.featured`, item.featured)}
+    </div>`;
+    if (type === "galleryFolders") return `<div class="admin-form-grid">
+      ${textField("Título da pasta", `${prefix}.title`, item.title)}${textField("Slug para partilhar", `${prefix}.slug`, item.slug)}
+      ${textField("Data", `${prefix}.date`, item.date, false, "date")}${textField("Imagem de capa", `${prefix}.cover`, item.cover)}
+      ${areaField("Descrição", `${prefix}.description`, item.description)}
+      <label class="wide">Media da pasta<textarea data-path="${prefix}.mediaText">${mediaToText(item.media)}</textarea><small>Uma linha por item: tipo|caminho|legenda. Exemplo: video|videos/ficheiro.mp4|Caminhada social</small></label>
+      ${checkField("Publicado", `${prefix}.published`, item.published)}
+    </div>`;
+    if (type === "highlight") return `<div class="admin-form-grid">
+      ${textField("Título", "highlight.title", item.title)}${textField("CTA label", "highlight.ctaLabel", item.ctaLabel)}
+      ${areaField("Texto curto", "highlight.text", item.text)}${textField("CTA link", "highlight.ctaLink", item.ctaLink)}
+      ${textField("Expiração", "highlight.expires", item.expires, false, "date")}${checkField("Ativo", "highlight.active", item.active)}
+    </div>`;
+    if (type === "settings") return `<div class="admin-form-grid">
+      ${textField("Marca", "settings.brand", item.brand)}${textField("Telefone", "settings.phone", item.phone)}
+      ${textField("Email", "settings.email", item.email)}${textField("Localização", "settings.location", item.location)}
+      ${textField("Área de serviço", "settings.serviceArea", item.serviceArea, true)}${textField("Facebook URL", "settings.facebook", item.facebook)}
+      ${textField("Instagram URL", "settings.instagram", item.instagram)}${textField("Messenger URL", "settings.messenger", item.messenger)}
+      ${textField("WhatsApp URL", "settings.whatsapp", item.whatsapp)}
+    </div>`;
+    return "";
+  }
+
+  function blank(type) {
+    if (type === "services") return { slug: "novo-servico", active: true, order: content.services.length + 1, title: "Novo serviço", image: "", short: "", long: "", pricePrefix: "Desde", price: "Sob consulta", duration: "", included: ["Avaliação", "Plano", "Acompanhamento"] };
+    if (type === "events") return { slug: "novo-evento", published: false, featured: false, title: "Novo evento", image: "", date: "", time: "", location: "", price: "", registrationLink: "contacto/", short: "", full: "" };
+    if (type === "posts") return { slug: "nova-publicacao", published: false, category: "Dica", title: "Nova publicação", image: "", short: "", date: new Date().toISOString().slice(0, 10), price: "", externalLink: "", full: "" };
+    if (type === "galleryFolders") return { slug: "nova-pasta", published: true, title: "Nova pasta", date: new Date().toISOString().slice(0, 10), description: "", cover: "", media: [], mediaText: "" };
+    return { published: false, featured: false, client: "Cliente", dog: "", rating: 5, source: "Facebook", image: "", text: "" };
+  }
+
+  function bindInputs(node) {
+    node.querySelectorAll("[data-path]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const value = input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) : input.value;
+        setValue(input.dataset.path, value);
+      });
+    });
+  }
+
+  function setValue(path, value) {
+    const parts = path.split(".");
+    let target = content;
+    while (parts.length > 1) target = target[parts.shift()];
+    if (parts[0] === "mediaText") {
+      target.media = textToMedia(value);
+      target.mediaText = value;
+      return;
+    }
+    target[parts[0]] = value;
+  }
+
+  function mediaToText(media) {
+    return (media || []).map((item) => `${item.type || "image"}|${item.src || ""}|${item.caption || ""}`).join("\n");
+  }
+
+  function textToMedia(value) {
+    return String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+      const [type, src, caption] = line.split("|");
+      return { type: type === "video" ? "video" : "image", src: src || "", caption: caption || "" };
+    }).filter((item) => item.src);
+  }
+
+  function escapeValue(value) {
+    return String(value ?? "").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+  }
+
+  function escapeText(value) {
+    return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;");
+  }
+
+  document.querySelector("[data-login-form]").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const selectedRole = form.get("role");
+    if (await hash(form.get("password")) === passwords[selectedRole]) {
+      role = selectedRole;
+      sessionStorage.setItem(sessionKey, role);
+      renderShell();
+    } else {
+      showNotice("Password incorreta.");
+    }
+  });
+  document.querySelector("[data-tabs]").addEventListener("click", (event) => {
+    if (event.target.matches("[data-tab]")) renderTab(event.target.dataset.tab);
+  });
+  document.querySelector("[data-save]").addEventListener("click", saveContent);
+  document.querySelector("[data-logout]").addEventListener("click", () => {
+    sessionStorage.removeItem(sessionKey);
+    role = "";
+    renderShell();
+  });
+  document.querySelector("[data-reset]").addEventListener("click", () => {
+    content = clone(window.PAULO_DEFAULT_CONTENT);
+    saveContent();
+    renderTab(activeTab);
+  });
+  renderShell();
+})();

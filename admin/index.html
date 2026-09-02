@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt" data-depth="1">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Paulo Rebelo Treino Canino</title>
+  <link rel="stylesheet" href="../assets/styles.css">
+  <link rel="stylesheet" href="admin.css">
+  <script defer src="../assets/content.js"></script>
+  <script defer src="admin.js"></script>
+</head>
+<body class="admin-body">
+  <main class="admin-shell">
+    <section class="login-panel" data-login>
+      <p class="eyebrow">Área privada</p>
+      <h1>Admin</h1>
+      <p>Entrada de demonstração local. Para produção, ligar a um backend com sessões seguras, passwords com hash forte, HTTPS e backups.</p>
+      <div class="admin-notice" data-login-notice hidden></div>
+      <form data-login-form>
+        <label>Utilizador
+          <select name="role"><option value="paulo">Paulo / Content Admin</option><option value="super">Super Admin</option></select>
+        </label>
+        <label>Password<input type="password" name="password" required placeholder="paulo2026"></label>
+        <button class="button" type="submit">Entrar</button>
+      </form>
+    </section>
+    <section class="admin-app" data-admin hidden>
+      <aside class="admin-sidebar">
+        <a class="brand" href="../index.html">Paulo Rebelo · Site</a>
+        <nav data-tabs>
+          <button data-tab="summary" class="active">Resumo</button>
+          <button data-tab="events">Eventos</button>
+          <button data-tab="services">Serviços & Preços</button>
+          <button data-tab="posts">Publicações</button>
+          <button data-tab="testimonials">Testemunhos</button>
+          <button data-tab="galleryFolders">Galeria</button>
+          <button data-tab="highlight">Destaque</button>
+          <button data-tab="settings">Definições</button>
+        </nav>
+        <button class="admin-link" data-reset>Repor conteúdo inicial</button>
+        <button class="admin-link" data-logout>Sair</button>
+      </aside>
+      <section class="admin-content">
+        <div class="admin-top"><div><p class="eyebrow" data-role></p><h2 data-title>Resumo</h2></div><button class="button" data-save>Guardar alterações</button></div>
+        <div class="admin-notice" data-notice hidden></div>
+        <div data-panel="summary"></div>
+        <div data-panel="events" hidden></div>
+        <div data-panel="services" hidden></div>
+        <div data-panel="posts" hidden></div>
+        <div data-panel="testimonials" hidden></div>
+        <div data-panel="galleryFolders" hidden></div>
+        <div data-panel="highlight" hidden></div>
+        <div data-panel="settings" hidden></div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
