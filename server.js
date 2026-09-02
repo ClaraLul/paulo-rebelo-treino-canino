@@ -253,9 +253,11 @@ http.createServer(async (request, response) => {
     response.end("Not found");
     return;
   }
+  const extension = path.extname(file).toLowerCase();
+  const isAdminFile = path.relative(root, file).replaceAll("\\", "/").startsWith("admin/");
   response.writeHead(200, {
-    "content-type": types[path.extname(file).toLowerCase()] || "application/octet-stream",
-    "cache-control": path.extname(file).toLowerCase() === ".html" ? "no-store" : "public, max-age=3600"
+    "content-type": types[extension] || "application/octet-stream",
+    "cache-control": extension === ".html" || isAdminFile ? "no-store" : "public, max-age=3600"
   });
   fs.createReadStream(file).pipe(response);
 }).listen(port, () => {
