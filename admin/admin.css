@@ -168,18 +168,19 @@
   width: auto;
 }
 .upload-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: .6rem;
-  align-items: center;
+  display: block;
 }
-.upload-row .ghost-button,
-.folder-upload .ghost-button {
-  white-space: nowrap;
+.upload-button {
+  width: 100%;
+  margin-top: .5rem;
+  background: rgba(122, 63, 34, .08);
+  border-color: rgba(122, 63, 34, .45);
+  color: var(--accent);
+  text-align: center;
 }
 .folder-upload {
   display: block;
-  margin-top: .6rem;
+  margin: 0 0 .6rem;
 }
 @media (max-width: 900px) {
   .admin-app {
@@ -218,9 +219,6 @@
   }
   .request-grid .wide {
     grid-column: auto;
-  }
-  .upload-row {
-    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 560px) {

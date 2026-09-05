@@ -223,7 +223,7 @@
   }
 
   function imageField(label, path, value, wide = false) {
-    return `<label class="${wide ? "wide" : ""}">${label}<span class="upload-row"><input type="text" value="${escapeValue(value)}" data-path="${path}"><input type="file" accept="image/*" data-upload-path="${path}" hidden><button class="ghost-button" type="button" data-upload-button="${path}">Carregar foto</button></span></label>`;
+    return `<label class="${wide ? "wide" : ""}">${label}<input type="text" value="${escapeValue(value)}" data-path="${path}"><span class="upload-row"><input type="file" accept="image/*" data-upload-path="${path}" hidden><button class="ghost-button upload-button" type="button" data-upload-button="${path}">+ Carregar foto</button></span></label>`;
   }
 
   function areaField(label, path, value) {
@@ -268,7 +268,7 @@
       ${textField("Título da pasta", `${prefix}.title`, item.title)}${textField("Slug para partilhar", `${prefix}.slug`, item.slug)}
       ${textField("Data", `${prefix}.date`, item.date, false, "date")}${imageField("Imagem de capa", `${prefix}.cover`, item.cover)}
       ${areaField("Descrição", `${prefix}.description`, item.description)}
-      <label class="wide">Media da pasta<textarea data-path="${prefix}.mediaText">${mediaToText(item.media)}</textarea><small>Uma linha por item: tipo|caminho|legenda. Exemplo: video|videos/ficheiro.mp4|Caminhada social</small><span class="folder-upload"><input type="file" accept="image/*" multiple data-upload-media="${prefix}" hidden><button class="ghost-button" type="button" data-upload-media-button="${prefix}">Carregar fotos para a pasta</button></span></label>
+      <label class="wide">Media da pasta<span class="folder-upload"><input type="file" accept="image/*" multiple data-upload-media="${prefix}" hidden><button class="ghost-button upload-button" type="button" data-upload-media-button="${prefix}">+ Carregar fotos para a pasta</button></span><textarea data-path="${prefix}.mediaText">${mediaToText(item.media)}</textarea><small>Uma linha por item: tipo|caminho|legenda. Exemplo: video|videos/ficheiro.mp4|Caminhada social</small></label>
       ${checkField("Publicado", `${prefix}.published`, item.published)}
     </div>`;
     if (type === "highlight") return `<div class="admin-form-grid">
