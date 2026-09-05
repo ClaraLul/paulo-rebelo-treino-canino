@@ -1,6 +1,9 @@
 .admin-body {
   background: #eee8dd;
 }
+.admin-body [hidden] {
+  display: none !important;
+}
 .admin-shell {
   min-height: 100svh;
 }
