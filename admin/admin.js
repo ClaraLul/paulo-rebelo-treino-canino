@@ -43,7 +43,7 @@
       data.galleryVersion = 3;
     }
     if (data.contentVersion !== 2) {
-      ["services", "posts", "events", "testimonials"].forEach((key) => {
+      ["services", "events", "testimonials"].forEach((key) => {
         const defaults = window.PAULO_DEFAULT_CONTENT[key] || [];
         (data[key] || []).forEach((item) => {
           const fresh = defaults.find((entry) => entry.slug && entry.slug === item.slug);
@@ -52,7 +52,7 @@
       });
       data.contentVersion = 2;
     }
-    ["services", "posts", "events"].forEach((key) => {
+    ["services", "events"].forEach((key) => {
       data[key] = data[key] || [];
       const existing = new Set(data[key].map((item) => item.slug));
       window.PAULO_DEFAULT_CONTENT[key].forEach((item) => {
@@ -119,12 +119,11 @@
     activeTab = tab;
     document.querySelectorAll("[data-tabs] button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
     document.querySelectorAll("[data-panel]").forEach((panel) => panel.hidden = panel.dataset.panel !== tab);
-    const labels = { summary: "Resumo", events: "Eventos", services: "Serviços & Preços", posts: "Publicações", testimonials: "Testemunhos", requests: "Pedidos", galleryFolders: "Galeria", highlight: "Destaque do Site", settings: "Definições" };
+    const labels = { summary: "Resumo", events: "Eventos", services: "Serviços & Preços", testimonials: "Testemunhos", requests: "Pedidos", galleryFolders: "Galeria", highlight: "Destaque do Site", settings: "Definições" };
     title.textContent = labels[tab];
     if (tab === "summary") renderSummary();
     if (tab === "events") renderCollection("events");
     if (tab === "services") renderCollection("services");
-    if (tab === "posts") renderCollection("posts");
     if (tab === "testimonials") renderCollection("testimonials");
     if (tab === "requests") {
       panel("requests").innerHTML = `<article class="editor-card"><h3>A carregar pedidos...</h3></article>`;
@@ -140,13 +139,11 @@
     const today = new Date().toISOString().slice(0, 10);
     const upcoming = content.events.filter((event) => event.published && event.date >= today).length;
     const activeServices = content.services.filter((service) => service.active).length;
-    const posts = content.posts.filter((post) => post.published).length;
     const featured = content.highlight.active ? content.highlight.title : "Sem destaque ativo";
     panel("summary").innerHTML = `<div class="admin-grid">
       <article class="admin-card"><p class="eyebrow">Próximos Eventos</p><strong>${upcoming}</strong><button class="ghost-button" data-goto="events">+ Adicionar Evento</button></article>
       <article class="admin-card"><p class="eyebrow">Serviços</p><strong>${activeServices}</strong><button class="ghost-button" data-goto="services">Gerir Serviços</button></article>
       <article class="admin-card"><p class="eyebrow">Pedidos</p><strong>${requests.length}</strong><button class="ghost-button" data-goto="requests">Ver pedidos</button></article>
-      <article class="admin-card"><p class="eyebrow">Novidades</p><strong>${posts}</strong><button class="ghost-button" data-goto="posts">+ Nova Publicação</button></article>
       <article class="admin-card"><p class="eyebrow">Destaque do Site</p><h3>${featured}</h3><button class="ghost-button" data-goto="highlight">Editar Destaque</button></article>
     </div>`;
     panel("summary").querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => renderTab(button.dataset.goto)));
@@ -158,7 +155,7 @@
 
   function renderCollection(type) {
     const node = panel(type);
-    const addLabel = { events: "+ Adicionar Evento", services: "+ Adicionar Serviço", posts: "+ Nova Publicação", testimonials: "+ Adicionar Testemunho", galleryFolders: "+ Adicionar Pasta" }[type];
+    const addLabel = { events: "+ Adicionar Evento", services: "+ Adicionar Serviço", testimonials: "+ Adicionar Testemunho", galleryFolders: "+ Adicionar Pasta" }[type];
     node.innerHTML = `<div class="admin-actions"><button class="ghost-button" data-add>${addLabel}</button></div><div class="editor-list"></div>`;
     node.querySelector("[data-add]").addEventListener("click", () => {
       content[type].push(blank(type));
@@ -225,6 +222,10 @@
     return `<label class="${wide ? "wide" : ""}">${label}<input type="${type}" value="${escapeValue(value)}" data-path="${path}"></label>`;
   }
 
+  function imageField(label, path, value, wide = false) {
+    return `<label class="${wide ? "wide" : ""}">${label}<span class="upload-row"><input type="text" value="${escapeValue(value)}" data-path="${path}"><input type="file" accept="image/*" data-upload-path="${path}" hidden><button class="ghost-button" type="button" data-upload-button="${path}">Carregar foto</button></span></label>`;
+  }
+
   function areaField(label, path, value) {
     return `<label class="wide">${label}<textarea data-path="${path}">${escapeText(value)}</textarea></label>`;
   }
@@ -233,41 +234,41 @@
     return `<label class="check-row"><input type="checkbox" ${value ? "checked" : ""} data-path="${path}">${label}</label>`;
   }
 
+  function gallerySelectField(label, path, value) {
+    const options = [`<option value="">Sem galeria associada</option>`]
+      .concat((content.galleryFolders || []).map((folder) => `<option value="${escapeValue(folder.slug)}" ${folder.slug === value ? "selected" : ""}>${escapeText(folder.title)}</option>`));
+    return `<label>${label}<select data-path="${path}">${options.join("")}</select></label>`;
+  }
+
   function fieldsFor(type, item, index) {
     const prefix = typeof index === "number" ? `${type}.${index}` : type;
     if (type === "services") return `<div class="admin-form-grid">
       ${textField("Título", `${prefix}.title`, item.title)}${textField("Slug", `${prefix}.slug`, item.slug)}
-      ${textField("Imagem", `${prefix}.image`, item.image, true)}${areaField("Descrição curta", `${prefix}.short`, item.short)}
+      ${imageField("Imagem", `${prefix}.image`, item.image, true)}${areaField("Descrição curta", `${prefix}.short`, item.short)}
       ${areaField("Descrição completa", `${prefix}.long`, item.long)}${textField("Preço prefixo", `${prefix}.pricePrefix`, item.pricePrefix)}
       ${textField("Preço", `${prefix}.price`, item.price)}${textField("Duração", `${prefix}.duration`, item.duration)}
       ${textField("Ordem", `${prefix}.order`, item.order, false, "number")}${checkField("Ativo", `${prefix}.active`, item.active)}
     </div>`;
     if (type === "events") return `<div class="admin-form-grid">
-      ${textField("Título", `${prefix}.title`, item.title)}${textField("Slug", `${prefix}.slug`, item.slug)}
-      ${textField("Imagem", `${prefix}.image`, item.image, true)}${textField("Data", `${prefix}.date`, item.date, false, "date")}
-      ${textField("Data visível", `${prefix}.dateLabel`, item.dateLabel || "")}${textField("Hora", `${prefix}.time`, item.time, false, "time")}
+      ${textField("Título", `${prefix}.title`, item.title)}
+      ${imageField("Imagem", `${prefix}.image`, item.image, true)}${textField("Data", `${prefix}.date`, item.date, false, "date")}
+      ${textField("Hora", `${prefix}.time`, item.time, false, "time")}
       ${textField("Local", `${prefix}.location`, item.location)}${textField("Preço", `${prefix}.price`, item.price)}
-      ${textField("Link de inscrição", `${prefix}.registrationLink`, item.registrationLink)}${areaField("Descrição curta", `${prefix}.short`, item.short)}
+      ${gallerySelectField("Galeria associada", `${prefix}.gallerySlug`, item.gallerySlug || "")}
+      ${areaField("Descrição curta", `${prefix}.short`, item.short)}
       ${areaField("Descrição completa", `${prefix}.full`, item.full)}${checkField("Publicado", `${prefix}.published`, item.published)}${checkField("Destaque", `${prefix}.featured`, item.featured)}
-    </div>`;
-    if (type === "posts") return `<div class="admin-form-grid">
-      ${textField("Título", `${prefix}.title`, item.title)}${textField("Slug", `${prefix}.slug`, item.slug)}
-      ${textField("Categoria", `${prefix}.category`, item.category)}${textField("Data", `${prefix}.date`, item.date, false, "date")}
-      ${textField("Imagem", `${prefix}.image`, item.image, true)}${areaField("Descrição curta", `${prefix}.short`, item.short)}
-      ${areaField("Conteúdo", `${prefix}.full`, item.full)}${textField("Preço opcional", `${prefix}.price`, item.price)}
-      ${textField("Link externo", `${prefix}.externalLink`, item.externalLink)}${checkField("Publicado", `${prefix}.published`, item.published)}
     </div>`;
     if (type === "testimonials") return `<div class="admin-form-grid">
       ${textField("Cliente", `${prefix}.client`, item.client)}${textField("Nome do cão", `${prefix}.dog`, item.dog)}
       ${textField("Rating", `${prefix}.rating`, item.rating, false, "number")}${textField("Fonte", `${prefix}.source`, item.source)}
-      ${textField("Imagem", `${prefix}.image`, item.image, true)}${areaField("Testemunho", `${prefix}.text`, item.text)}
+      ${imageField("Imagem", `${prefix}.image`, item.image, true)}${areaField("Testemunho", `${prefix}.text`, item.text)}
       ${checkField("Publicado", `${prefix}.published`, item.published)}${checkField("Destaque", `${prefix}.featured`, item.featured)}
     </div>`;
     if (type === "galleryFolders") return `<div class="admin-form-grid">
       ${textField("Título da pasta", `${prefix}.title`, item.title)}${textField("Slug para partilhar", `${prefix}.slug`, item.slug)}
-      ${textField("Data", `${prefix}.date`, item.date, false, "date")}${textField("Imagem de capa", `${prefix}.cover`, item.cover)}
+      ${textField("Data", `${prefix}.date`, item.date, false, "date")}${imageField("Imagem de capa", `${prefix}.cover`, item.cover)}
       ${areaField("Descrição", `${prefix}.description`, item.description)}
-      <label class="wide">Media da pasta<textarea data-path="${prefix}.mediaText">${mediaToText(item.media)}</textarea><small>Uma linha por item: tipo|caminho|legenda. Exemplo: video|videos/ficheiro.mp4|Caminhada social</small></label>
+      <label class="wide">Media da pasta<textarea data-path="${prefix}.mediaText">${mediaToText(item.media)}</textarea><small>Uma linha por item: tipo|caminho|legenda. Exemplo: video|videos/ficheiro.mp4|Caminhada social</small><span class="folder-upload"><input type="file" accept="image/*" multiple data-upload-media="${prefix}" hidden><button class="ghost-button" type="button" data-upload-media-button="${prefix}">Carregar fotos para a pasta</button></span></label>
       ${checkField("Publicado", `${prefix}.published`, item.published)}
     </div>`;
     if (type === "highlight") return `<div class="admin-form-grid">
@@ -286,19 +287,99 @@
 
   function blank(type) {
     if (type === "services") return { slug: "novo-servico", active: true, order: content.services.length + 1, title: "Novo serviço", image: "", short: "", long: "", pricePrefix: "Desde", price: "Sob consulta", duration: "", included: ["Avaliação", "Plano", "Acompanhamento"] };
-    if (type === "events") return { slug: "novo-evento", published: false, featured: false, title: "Novo evento", image: "", date: "", time: "", location: "", price: "", registrationLink: "contacto/", short: "", full: "" };
-    if (type === "posts") return { slug: "nova-publicacao", published: false, category: "Dica", title: "Nova publicação", image: "", short: "", date: new Date().toISOString().slice(0, 10), price: "", externalLink: "", full: "" };
+    if (type === "events") return { slug: "novo-evento", published: false, featured: false, title: "Novo evento", image: "", date: "", time: "", location: "", price: "5€", gallerySlug: "", registrationLink: "contacto/", short: "", full: "" };
     if (type === "galleryFolders") return { slug: "nova-pasta", published: true, title: "Nova pasta", date: new Date().toISOString().slice(0, 10), description: "", cover: "", media: [], mediaText: "" };
     return { published: false, featured: false, client: "Cliente", dog: "", rating: 5, source: "Facebook", image: "", text: "" };
   }
 
   function bindInputs(node) {
     node.querySelectorAll("[data-path]").forEach((input) => {
-      input.addEventListener("input", () => {
+      const update = () => {
         const value = input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) : input.value;
         setValue(input.dataset.path, value);
+      };
+      input.addEventListener("input", update);
+      input.addEventListener("change", update);
+    });
+    node.querySelectorAll("[data-upload-button]").forEach((button) => {
+      button.addEventListener("click", () => {
+        node.querySelector(`[data-upload-path="${cssEscape(button.dataset.uploadButton)}"]`).click();
       });
     });
+    node.querySelectorAll("[data-upload-path]").forEach((input) => {
+      input.addEventListener("change", async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        try {
+          await uploadImage(file, input.dataset.uploadPath);
+        } catch (error) {
+          showNotice("Erro ao carregar foto.");
+        }
+        input.value = "";
+      });
+    });
+    node.querySelectorAll("[data-upload-media-button]").forEach((button) => {
+      button.addEventListener("click", () => {
+        node.querySelector(`[data-upload-media="${cssEscape(button.dataset.uploadMediaButton)}"]`).click();
+      });
+    });
+    node.querySelectorAll("[data-upload-media]").forEach((input) => {
+      input.addEventListener("change", async () => {
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+        try {
+          await uploadFolderImages(files, input.dataset.uploadMedia, node);
+        } catch (error) {
+          showNotice("Erro ao carregar fotos.");
+        }
+        input.value = "";
+      });
+    });
+  }
+
+  async function uploadImage(file, keyPath) {
+    if (!file.type.startsWith("image/")) {
+      showNotice("Escolha um ficheiro de imagem.");
+      return;
+    }
+    showNotice("A carregar foto...");
+    const uploadedPath = await sendUpload(file);
+    setValue(keyPath, uploadedPath);
+    const input = document.querySelector(`[data-path="${cssEscape(keyPath)}"]`);
+    if (input) input.value = uploadedPath;
+    showNotice("Foto carregada. Clique em Guardar alterações.");
+  }
+
+  async function uploadFolderImages(files, prefix, node) {
+    showNotice("A carregar fotos...");
+    const folder = valueAt(prefix);
+    folder.media = folder.media || [];
+    for (const file of files) {
+      if (!file.type.startsWith("image/")) continue;
+      const uploadedPath = await sendUpload(file);
+      folder.media.push({ type: "image", src: uploadedPath, caption: folder.title || "Galeria" });
+    }
+    folder.mediaText = mediaToText(folder.media);
+    const textarea = node.querySelector(`[data-path="${cssEscape(prefix + ".mediaText")}"]`);
+    if (textarea) textarea.value = folder.mediaText;
+    showNotice("Fotos adicionadas. Clique em Guardar alterações.");
+  }
+
+  async function sendUpload(file) {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch("/api/upload", { method: "POST", body: form });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Upload failed");
+    return payload.path;
+  }
+
+  function valueAt(keyPath) {
+    return keyPath.split(".").reduce((target, part) => target && target[part], content);
+  }
+
+  function cssEscape(value) {
+    return (window.CSS && CSS.escape) ? CSS.escape(value) : String(value).replace(/["\\]/g, "\\$&");
   }
 
   function setValue(keyPath, value) {
@@ -359,11 +440,6 @@
     role = "";
     renderShell();
   });
-  document.querySelector("[data-reset]").addEventListener("click", () => {
-    content = normalizeContent(clone(window.PAULO_DEFAULT_CONTENT));
-    renderTab(activeTab);
-  });
-
   async function boot() {
     const session = await fetch("/api/session", { cache: "no-store" }).then((response) => response.json()).catch(() => ({ authenticated: false }));
     role = session.authenticated ? session.role : "";

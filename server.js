@@ -11,6 +11,15 @@ const contentFile = path.join(dataDir, "content.json");
 const requestsFile = path.join(dataDir, "requests.json");
 const sessions = new Map();
 const maxBodySize = 2 * 1024 * 1024;
+const maxUploadSize = 12 * 1024 * 1024;
+const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
+const supabaseKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const useSupabase = Boolean(supabaseUrl && supabaseKey);
+const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME || "";
+const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY || "";
+const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET || "";
+const cloudinaryFolder = process.env.CLOUDINARY_FOLDER || "paulo-rebelo";
+const useCloudinary = Boolean(cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret);
 
 const demoHashes = {
   paulo: "822bfda4f01fd54b614905a0d875e80ae0210477a4971c3b22e97d1dd6c3372c",
@@ -25,6 +34,8 @@ const types = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".svg": "image/svg+xml"
@@ -32,6 +43,10 @@ const types = {
 
 function sha256(value) {
   return crypto.createHash("sha256").update(String(value)).digest("hex");
+}
+
+function sha1(value) {
+  return crypto.createHash("sha1").update(String(value)).digest("hex");
 }
 
 function passwordHashFor(role) {
@@ -54,14 +69,61 @@ function ensureContentFile() {
   }
 }
 
-function readContent() {
+function readLocalContent() {
   ensureContentFile();
   return JSON.parse(fs.readFileSync(contentFile, "utf8"));
 }
 
-function writeContent(content) {
+function writeLocalContent(content) {
   ensureContentFile();
   fs.writeFileSync(contentFile, JSON.stringify(content, null, 2));
+}
+
+async function supabaseRequest(route, options = {}) {
+  const response = await fetch(`${supabaseUrl}${route}`, {
+    ...options,
+    headers: {
+      apikey: supabaseKey,
+      authorization: `Bearer ${supabaseKey}`,
+      "content-type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const text = await response.text();
+  const payload = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || `Supabase error ${response.status}`);
+  }
+  return payload;
+}
+
+async function writeRemoteContent(content) {
+  await supabaseRequest("/rest/v1/site_content?on_conflict=id", {
+    method: "POST",
+    headers: { prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify([{ id: "main", content, updated_at: new Date().toISOString() }])
+  });
+}
+
+async function readRemoteContent() {
+  const rows = await supabaseRequest("/rest/v1/site_content?id=eq.main&select=content", { method: "GET" });
+  if (rows.length && rows[0].content) return rows[0].content;
+
+  const initial = fs.existsSync(contentFile) ? readLocalContent() : readDefaultContent();
+  await writeRemoteContent(initial);
+  return initial;
+}
+
+async function readContent() {
+  return useSupabase ? readRemoteContent() : readLocalContent();
+}
+
+async function writeContent(content) {
+  if (useSupabase) {
+    await writeRemoteContent(content);
+    return;
+  }
+  writeLocalContent(content);
 }
 
 function ensureRequestsFile() {
@@ -79,6 +141,37 @@ function readRequests() {
 function writeRequests(requests) {
   ensureRequestsFile();
   fs.writeFileSync(requestsFile, JSON.stringify(requests, null, 2));
+}
+
+async function readRemoteRequests() {
+  const rows = await supabaseRequest("/rest/v1/contact_requests?select=id,created_at,payload&order=created_at.desc", { method: "GET" });
+  return rows.map((row) => ({ ...(row.payload || {}), id: row.id, createdAt: row.created_at }));
+}
+
+async function readStoredRequests() {
+  return useSupabase ? readRemoteRequests() : readRequests();
+}
+
+async function addStoredRequest(entry) {
+  if (useSupabase) {
+    await supabaseRequest("/rest/v1/contact_requests", {
+      method: "POST",
+      body: JSON.stringify([{ id: entry.id, created_at: entry.createdAt, payload: entry }])
+    });
+    return;
+  }
+  const requests = readRequests();
+  requests.unshift(entry);
+  writeRequests(requests);
+}
+
+async function deleteStoredRequest(id) {
+  if (useSupabase) {
+    await supabaseRequest(`/rest/v1/contact_requests?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+    return;
+  }
+  const requests = readRequests();
+  writeRequests(requests.filter((entry) => entry.id !== id));
 }
 
 function sendJson(response, status, payload, headers = {}) {
@@ -129,6 +222,112 @@ function readBody(request) {
   });
 }
 
+function readRawBody(request, limit = maxUploadSize) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("Upload too large"));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => resolve(Buffer.concat(chunks)));
+    request.on("error", reject);
+  });
+}
+
+function parseMultipartUpload(request, body) {
+  const match = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(request.headers["content-type"] || "");
+  const boundary = match && (match[1] || match[2]);
+  if (!boundary) throw new Error("Missing upload boundary");
+
+  const marker = Buffer.from(`--${boundary}`);
+  const nameMatch = /name="file";\s*filename="([^"]+)"/i;
+  let offset = 0;
+
+  while (offset < body.length) {
+    const start = body.indexOf(marker, offset);
+    if (start === -1) break;
+    const headerStart = start + marker.length + 2;
+    const headerEnd = body.indexOf(Buffer.from("\r\n\r\n"), headerStart);
+    if (headerEnd === -1) break;
+
+    const headers = body.slice(headerStart, headerEnd).toString("utf8");
+    const filename = nameMatch.exec(headers)?.[1] || "";
+    const contentType = /content-type:\s*([^\r\n]+)/i.exec(headers)?.[1]?.trim().toLowerCase() || "";
+    const dataStart = headerEnd + 4;
+    const next = body.indexOf(Buffer.from(`\r\n--${boundary}`), dataStart);
+    if (next === -1) break;
+
+    if (filename) {
+      return {
+        filename,
+        contentType,
+        data: body.slice(dataStart, next)
+      };
+    }
+    offset = next + 2;
+  }
+
+  throw new Error("No file uploaded");
+}
+
+function validateUploadedImage(upload) {
+  const allowed = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif"
+  };
+  const extension = allowed[upload.contentType];
+  if (!extension) throw new Error("Only image uploads are allowed");
+  if (!upload.data.length) throw new Error("Uploaded file is empty");
+  return extension;
+}
+
+async function uploadToCloudinary(upload) {
+  validateUploadedImage(upload);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = sha1(`folder=${cloudinaryFolder}&timestamp=${timestamp}${cloudinaryApiSecret}`);
+  const form = new FormData();
+  form.append("file", new Blob([upload.data], { type: upload.contentType }), upload.filename);
+  form.append("api_key", cloudinaryApiKey);
+  form.append("timestamp", String(timestamp));
+  form.append("folder", cloudinaryFolder);
+  form.append("signature", signature);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryCloudName}/image/upload`, {
+    method: "POST",
+    body: form
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error?.message || "Cloudinary upload failed");
+  return payload.secure_url;
+}
+
+function saveUploadedImageLocally(upload) {
+  const extension = validateUploadedImage(upload);
+  const base = path.basename(upload.filename, path.extname(upload.filename))
+    .normalize("NFKD")
+    .replace(/[^\w-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+    .slice(0, 60) || "imagem";
+  const filename = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}-${base}${extension}`;
+  const picturesDir = path.join(root, "Pictures");
+  fs.mkdirSync(picturesDir, { recursive: true });
+  fs.writeFileSync(path.join(picturesDir, filename), upload.data);
+  return `Pictures/${filename}`;
+}
+
+async function saveUploadedImage(upload) {
+  return useCloudinary ? uploadToCloudinary(upload) : saveUploadedImageLocally(upload);
+}
+
 function resolveFile(urlPath) {
   const clean = decodeURIComponent(urlPath.split("?")[0]).replace(/^\/+/, "");
   let target = path.join(root, clean);
@@ -142,7 +341,7 @@ function resolveFile(urlPath) {
 async function handleApi(request, response, pathname) {
   try {
     if (request.method === "GET" && pathname === "/api/content") {
-      sendJson(response, 200, readContent());
+      sendJson(response, 200, await readContent());
       return true;
     }
 
@@ -186,9 +385,7 @@ async function handleApi(request, response, pathname) {
         sendJson(response, 400, { error: "Missing required fields" });
         return true;
       }
-      const requests = readRequests();
-      requests.unshift(entry);
-      writeRequests(requests);
+      await addStoredRequest(entry);
       sendJson(response, 201, { ok: true });
       return true;
     }
@@ -199,7 +396,7 @@ async function handleApi(request, response, pathname) {
         sendJson(response, 401, { error: "Not authenticated" });
         return true;
       }
-      sendJson(response, 200, readRequests());
+      sendJson(response, 200, await readStoredRequests());
       return true;
     }
 
@@ -210,8 +407,7 @@ async function handleApi(request, response, pathname) {
         return true;
       }
       const id = decodeURIComponent(pathname.replace("/api/requests/", ""));
-      const requests = readRequests();
-      writeRequests(requests.filter((entry) => entry.id !== id));
+      await deleteStoredRequest(id);
       sendJson(response, 200, { ok: true });
       return true;
     }
@@ -225,13 +421,24 @@ async function handleApi(request, response, pathname) {
       return true;
     }
 
+    if (request.method === "POST" && pathname === "/api/upload") {
+      const session = currentSession(request);
+      if (!session) {
+        sendJson(response, 401, { error: "Not authenticated" });
+        return true;
+      }
+      const upload = parseMultipartUpload(request, await readRawBody(request));
+      sendJson(response, 201, { path: await saveUploadedImage(upload) });
+      return true;
+    }
+
     if (request.method === "PUT" && pathname === "/api/content") {
       const session = currentSession(request);
       if (!session) {
         sendJson(response, 401, { error: "Not authenticated" });
         return true;
       }
-      writeContent(await readBody(request));
+      await writeContent(await readBody(request));
       sendJson(response, 200, { ok: true });
       return true;
     }
@@ -261,6 +468,6 @@ http.createServer(async (request, response) => {
   });
   fs.createReadStream(file).pipe(response);
 }).listen(port, () => {
-  ensureContentFile();
+  if (!useSupabase) ensureContentFile();
   console.log(`Paulo Rebelo site: http://localhost:${port}`);
 });

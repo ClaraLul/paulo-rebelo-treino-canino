@@ -36,7 +36,7 @@
       data.galleryVersion = 3;
     }
     if (data.contentVersion !== 2) {
-      ["services", "posts", "events", "testimonials"].forEach((key) => {
+      ["services", "events", "testimonials"].forEach((key) => {
         const defaults = window.PAULO_DEFAULT_CONTENT[key] || [];
         (data[key] || []).forEach((item) => {
           const fresh = defaults.find((entry) => entry.slug && entry.slug === item.slug);
@@ -45,7 +45,7 @@
       });
       data.contentVersion = 2;
     }
-    ["services", "posts", "events"].forEach((key) => {
+    ["services", "events"].forEach((key) => {
       data[key] = data[key] || [];
       const existing = new Set((data[key] || []).map((item) => item.slug));
       window.PAULO_DEFAULT_CONTENT[key].forEach((item) => {
@@ -176,11 +176,11 @@
     const pastEvents = publishedEvents
       .filter((event) => !future(event))
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-    const posts = [...upcomingEvents, ...pastEvents]
+    const eventCards = [...upcomingEvents, ...pastEvents]
       .slice(0, 3)
       .map((event) => ({ ...event, category: "Evento" }));
     const news = el("[data-news-section]");
-    if (posts.length) el("[data-news]").innerHTML = posts.map(postCard).join("");
+    if (eventCards.length) el("[data-news]").innerHTML = eventCards.map(postCard).join("");
     else news.remove();
     const featured = data.events.find((event) => event.featured && future(event));
     const eventSection = el("[data-featured-event]");
@@ -198,7 +198,8 @@
   function postCard(p) {
     const base = p.category === "Evento" ? "eventos/" : "novidades/";
     const displayDate = p.dateLabel || formatDate(p.date);
-    return `<article class="post-card reveal"><img src="${img(p.image)}" alt="${p.title}" loading="lazy"><div><p class="eyebrow">${p.category} · ${displayDate}</p><h3>${p.title}</h3><p>${p.short}</p><a class="text-link" href="${p.externalLink || path(base + p.slug + "/")}">Ler mais</a></div></article>`;
+    const galleryLink = p.gallerySlug ? `<a class="text-link" href="${path("galeria/")}?folder=${encodeURIComponent(p.gallerySlug)}">Ver galeria</a>` : "";
+    return `<article class="post-card reveal"><img src="${img(p.image)}" alt="${p.title}" loading="lazy"><div><p class="eyebrow">${p.category} · ${displayDate}</p><h3>${p.title}</h3><p>${p.short}</p><a class="text-link" href="${p.externalLink || path(base + p.slug + "/")}">Ler mais</a>${galleryLink}</div></article>`;
   }
 
   function renderServices(data) {
@@ -236,16 +237,12 @@
 
   function renderNews(data) {
     if (!document.body.matches("[data-page='news']")) return;
-    const posts = data.posts.filter((p) => p.published);
     const events = data.events
       .filter((event) => event.published)
       .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
     const eventSection = el("[data-events-section]");
-    const postSection = el("[data-posts-section]");
     if (events.length) el("[data-event-list]").innerHTML = events.map((event) => ({ ...event, category: "Evento" })).map(postCard).join("");
     else eventSection.remove();
-    if (posts.length) el("[data-news-list]").innerHTML = posts.map(postCard).join("");
-    else postSection.remove();
   }
 
   function mediaFigure(item, large) {
@@ -268,15 +265,20 @@
       detailSection.hidden = true;
       return;
     }
-    folderList.innerHTML = folders.map((folder) => `
-      <article class="service-card reveal">
-        <a href="${path("galeria/")}?folder=${folder.slug}"><img src="${img(folder.cover)}" alt="${folder.title}" loading="lazy"></a>
-        <div><p class="eyebrow">${formatDate(folder.date)}</p><h3>${folder.title}</h3><p>${folder.description}</p><a class="text-link" href="${path("galeria/")}?folder=${folder.slug}">Abrir pasta</a></div>
-      </article>`).join("");
     const selectedSlug = new URLSearchParams(window.location.search).get("folder");
-    const selected = folders.find((folder) => folder.slug === selectedSlug) || folders[0];
+    const selected = folders.find((folder) => folder.slug === selectedSlug);
+    if (!selected) {
+      folderList.innerHTML = folders.map((folder) => `
+        <article class="service-card reveal">
+          <a href="${path("galeria/")}?folder=${folder.slug}"><img src="${img(folder.cover)}" alt="${folder.title}" loading="lazy"></a>
+          <div><p class="eyebrow">${formatDate(folder.date)}</p><h3>${folder.title}</h3><p>${folder.description}</p><a class="text-link" href="${path("galeria/")}?folder=${folder.slug}">Abrir pasta</a></div>
+        </article>`).join("");
+      detailSection.hidden = true;
+      return;
+    }
+    foldersSection.hidden = true;
     detailSection.hidden = false;
-    detailHead.innerHTML = `<p class="eyebrow">${formatDate(selected.date)}</p><h2>${selected.title}</h2><p>${selected.description}</p><p><a class="text-link" href="${window.location.href}">Copiar link desta pasta</a></p>`;
+    detailHead.innerHTML = `<p><a class="text-link" href="${path("galeria/")}">Voltar às pastas</a></p><p class="eyebrow">${formatDate(selected.date)}</p><h2>${selected.title}</h2><p>${selected.description}</p><p><a class="text-link" href="${window.location.href}">Copiar link desta pasta</a></p>`;
     detail.innerHTML = selected.media.map((item, index) => mediaFigure(item, index === 0)).join("");
   }
 
@@ -284,14 +286,19 @@
     if (!document.body.matches("[data-page='content-detail']")) return;
     const kind = document.body.dataset.kind;
     const slug = document.body.dataset.slug;
-    const source = kind === "event" ? data.events : data.posts;
+    const source = kind === "event" ? data.events : [];
     const item = source.find((entry) => entry.slug === slug) || source[0];
+    if (!item) {
+      window.location.replace(path("novidades/"));
+      return;
+    }
     const category = kind === "event" ? "Evento" : item.category;
     const registration = kind === "event" && future(item)
       ? `<a class="button" href="${path((item.registrationLink || "contacto/") + "?motivo=" + item.slug)}">Inscrever-me</a>`
       : kind === "event"
         ? `<p class="closed-event">Inscrições encerradas. Este evento já aconteceu.</p>`
         : `<a class="button" href="${path("contacto/")}">Falar com Paulo</a>`;
+    const galleryLink = item.gallerySlug ? `<p><a class="text-link" href="${path("galeria/")}?folder=${encodeURIComponent(item.gallerySlug)}">Galeria deste evento</a></p>` : "";
     document.title = `${item.title} · Paulo Rebelo`;
     el("[data-content-detail]").innerHTML = `
       <section class="page-hero image-hero" style="background-image: linear-gradient(90deg, rgba(18,19,17,.76), rgba(18,19,17,.25)), url('${img(item.image)}')">
@@ -299,7 +306,7 @@
       </section>
       <section class="section two-col">
         <div><p class="eyebrow">${kind === "event" ? item.location : category}</p><h2>${kind === "event" ? "Informação do evento" : "Conteúdo escolhido para o site"}</h2></div>
-        <div><p>${item.full || item.short}</p>${kind === "event" ? `<p><strong>Hora:</strong> ${item.time || "A confirmar"}<br><strong>Preço:</strong> ${item.price || "Sob consulta"}</p>` : ""}${registration}</div>
+        <div><p>${item.full || item.short}</p>${kind === "event" ? `<p><strong>Hora:</strong> ${item.time || "A confirmar"}<br><strong>Preço:</strong> ${item.price || "Sob consulta"}</p>${galleryLink}` : ""}${registration}</div>
       </section>`;
   }
 

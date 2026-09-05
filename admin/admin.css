@@ -22,23 +22,23 @@
 .admin-app {
   min-height: 100svh;
   display: grid;
-  grid-template-columns: 290px 1fr;
+  grid-template-columns: 230px 1fr;
 }
 .admin-sidebar {
   position: sticky;
   top: 0;
   height: 100svh;
-  padding: 1.4rem;
+  padding: 1rem;
   background: #141511;
   color: var(--white);
 }
 .admin-sidebar .brand {
   display: block;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
 }
 .admin-sidebar nav {
   display: grid;
-  gap: .35rem;
+  gap: .2rem;
 }
 .admin-sidebar button,
 .admin-link {
@@ -47,7 +47,7 @@
   border: 0;
   background: transparent;
   color: rgba(255,255,255,.7);
-  padding: .8rem;
+  padding: .55rem .65rem;
   font: inherit;
   font-weight: 800;
   cursor: pointer;
@@ -59,7 +59,7 @@
   color: var(--white);
 }
 .admin-link {
-  margin-top: 1rem;
+  margin-top: .6rem;
 }
 .admin-content {
   padding: clamp(1rem, 3vw, 2rem);
@@ -139,6 +139,12 @@
 .admin-form-grid .wide {
   grid-column: 1 / -1;
 }
+.admin-form-grid input,
+.admin-form-grid textarea,
+.admin-form-grid select {
+  font-weight: 500;
+  line-height: 1.45;
+}
 .request-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -161,6 +167,20 @@
 .check-row input {
   width: auto;
 }
+.upload-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .6rem;
+  align-items: center;
+}
+.upload-row .ghost-button,
+.folder-upload .ghost-button {
+  white-space: nowrap;
+}
+.folder-upload {
+  display: block;
+  margin-top: .6rem;
+}
 @media (max-width: 900px) {
   .admin-app {
     grid-template-columns: 1fr;
@@ -168,6 +188,23 @@
   .admin-sidebar {
     position: static;
     height: auto;
+    padding: .8rem;
+  }
+  .admin-sidebar .brand {
+    margin-bottom: .7rem;
+  }
+  .admin-sidebar nav {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .admin-sidebar button,
+  .admin-link {
+    padding: .5rem;
+    font-size: .9rem;
+  }
+  .admin-link {
+    display: inline-block;
+    width: auto;
+    margin-right: .5rem;
   }
   .admin-grid,
   .admin-form-grid {
@@ -181,5 +218,13 @@
   }
   .request-grid .wide {
     grid-column: auto;
+  }
+  .upload-row {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .admin-sidebar nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
