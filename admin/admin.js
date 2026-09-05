@@ -119,7 +119,7 @@
     activeTab = tab;
     document.querySelectorAll("[data-tabs] button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
     document.querySelectorAll("[data-panel]").forEach((panel) => panel.hidden = panel.dataset.panel !== tab);
-    const labels = { summary: "Resumo", events: "Eventos", services: "Serviços & Preços", testimonials: "Testemunhos", requests: "Pedidos", galleryFolders: "Galeria", highlight: "Destaque do Site", settings: "Definições" };
+    const labels = { summary: "Resumo", events: "Eventos", services: "Serviços & Preços", testimonials: "Testemunhos", requests: "Pedidos", galleryFolders: "Galeria", settings: "Definições" };
     title.textContent = labels[tab];
     if (tab === "summary") renderSummary();
     if (tab === "events") renderCollection("events");
@@ -131,7 +131,6 @@
       renderRequests();
     }
     if (tab === "galleryFolders") renderCollection("galleryFolders");
-    if (tab === "highlight") renderObject("highlight", content.highlight);
     if (tab === "settings") renderObject("settings", content.settings);
   }
 
@@ -139,12 +138,10 @@
     const today = new Date().toISOString().slice(0, 10);
     const upcoming = content.events.filter((event) => event.published && event.date >= today).length;
     const activeServices = content.services.filter((service) => service.active).length;
-    const featured = content.highlight.active ? content.highlight.title : "Sem destaque ativo";
     panel("summary").innerHTML = `<div class="admin-grid">
       <article class="admin-card"><p class="eyebrow">Próximos Eventos</p><strong>${upcoming}</strong><button class="ghost-button" data-goto="events">+ Adicionar Evento</button></article>
       <article class="admin-card"><p class="eyebrow">Serviços</p><strong>${activeServices}</strong><button class="ghost-button" data-goto="services">Gerir Serviços</button></article>
       <article class="admin-card"><p class="eyebrow">Pedidos</p><strong>${requests.length}</strong><button class="ghost-button" data-goto="requests">Ver pedidos</button></article>
-      <article class="admin-card"><p class="eyebrow">Destaque do Site</p><h3>${featured}</h3><button class="ghost-button" data-goto="highlight">Editar Destaque</button></article>
     </div>`;
     panel("summary").querySelectorAll("[data-goto]").forEach((button) => button.addEventListener("click", () => renderTab(button.dataset.goto)));
   }
@@ -270,11 +267,6 @@
       ${areaField("Descrição", `${prefix}.description`, item.description)}
       <label class="wide">Media da pasta<span class="folder-upload"><input type="file" accept="image/*" multiple data-upload-media="${prefix}" hidden><button class="ghost-button upload-button" type="button" data-upload-media-button="${prefix}">+ Carregar fotos para a pasta</button></span><textarea data-path="${prefix}.mediaText">${mediaToText(item.media)}</textarea><small>Uma linha por item: tipo|caminho|legenda. Exemplo: video|videos/ficheiro.mp4|Caminhada social</small></label>
       ${checkField("Publicado", `${prefix}.published`, item.published)}
-    </div>`;
-    if (type === "highlight") return `<div class="admin-form-grid">
-      ${textField("Título", "highlight.title", item.title)}${textField("CTA label", "highlight.ctaLabel", item.ctaLabel)}
-      ${areaField("Texto curto", "highlight.text", item.text)}${textField("CTA link", "highlight.ctaLink", item.ctaLink)}
-      ${textField("Expiração", "highlight.expires", item.expires, false, "date")}${checkField("Ativo", "highlight.active", item.active)}
     </div>`;
     if (type === "settings") return `<div class="admin-form-grid">
       ${textField("Marca", "settings.brand", item.brand)}${textField("Telefone", "settings.phone", item.phone)}

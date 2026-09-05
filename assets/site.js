@@ -159,9 +159,10 @@
     if (!document.body.matches("[data-page='home']")) return;
     const hero = el("[data-hero]");
     hero.style.backgroundImage = `linear-gradient(90deg, rgba(18,19,17,.78), rgba(18,19,17,.34), rgba(18,19,17,.1)), url('${img("Pictures/763103798_1067937529145582_5245601540913434113_n.jpeg")}')`;
+    const highlightData = data.highlight || window.PAULO_DEFAULT_CONTENT.highlight;
     const highlight = el("[data-highlight]");
-    if (data.highlight.active && (!data.highlight.expires || new Date(data.highlight.expires + "T23:59:59") >= today)) {
-      highlight.innerHTML = `<strong>${data.highlight.title}</strong><span>${data.highlight.text}</span><a href="${path(data.highlight.ctaLink)}">${data.highlight.ctaLabel}</a>`;
+    if (highlightData?.active && (!highlightData.expires || new Date(highlightData.expires + "T23:59:59") >= today)) {
+      highlight.innerHTML = `<strong>${highlightData.title}</strong><span>${highlightData.text}</span><a href="${path(highlightData.ctaLink)}">${highlightData.ctaLabel}</a>`;
     } else {
       highlight.remove();
     }
